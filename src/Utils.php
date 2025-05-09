@@ -75,42 +75,90 @@ class Utils
             throw new \InvalidArgumentException('Invalid message');
         }
 
+        // $firstLinePos = strpos($message, "\n");
+        // $firstLine = $firstLinePos === false ? $message : substr($message, 0, $firstLinePos);
+
+        // // /** @noinspection NotOptimalRegularExpressionsInspection */
+        // if (! preg_match('%^[^\s]+[^:]*:%', $firstLine)) {
+        //     $headers = [];
+        //     $body = $message;
+        //     return compact('headers', 'body');
+        // }
+
+        // // messages as returned by many mail servers
+        // $headersEOL = $EOL;
+
+        // // find an empty line between headers and body
+        // // default is set new line
+        // if (strpos($message, $EOL.$EOL)) {
+        //     [$headers, $body] = explode($EOL.$EOL, $message, 2);
+        //     // next is the standard new line
+        // } elseif ($EOL !== "\r\n" && strpos($message, "\r\n\r\n")) {
+        //     [$headers, $body] = explode("\r\n\r\n", $message, 2);
+        //     $headersEOL = "\r\n"; // Headers::fromString will fail with incorrect EOL
+        //     // next is the other "standard" new line
+        // } elseif ($EOL !== "\n" && strpos($message, "\n\n")) {
+        //     [$headers, $body] = explode("\n\n", $message, 2);
+        //     $headersEOL = "\n";
+        //     // at last resort find anything that looks like a new line
+        // } else {
+        //     // [$headers, $body] = preg_split("%([\r\n]+)\\1%U", $message, 2);
+        //     $headers = '';
+        //     $body = $message;
+        // }
+
+        // $headers = self::parseHeaders($headers, $headersEOL);
+
+        // return compact('headers', 'body');
+        $message = trim($message);
         $firstLinePos = strpos($message, "\n");
-        $firstLine = $firstLinePos === false ? $message : substr($message, 0, $firstLinePos);
-
-        /** @noinspection NotOptimalRegularExpressionsInspection */
-        if (! preg_match('%^[^\s]+[^:]*:%', $firstLine)) {
-            $headers = [];
-            $body = $message;
-
-            return compact('headers', 'body');
+        if ($firstLinePos === false || $firstLinePos <= 3) {
+            // even if $message looks like header, I will set it to body
+            return [
+                'headers' => [],
+                'body' => trim($message)
+            ];
         }
-
-        // messages as returned by many mail servers
-        $headersEOL = $EOL;
-
-        // find an empty line between headers and body
-        // default is set new line
-        if (strpos($message, $EOL.$EOL)) {
-            [$headers, $body] = explode($EOL.$EOL, $message, 2);
-            // next is the standard new line
-        } elseif ($EOL !== "\r\n" && strpos($message, "\r\n\r\n")) {
-            [$headers, $body] = explode("\r\n\r\n", $message, 2);
-            $headersEOL = "\r\n"; // Headers::fromString will fail with incorrect EOL
-            // next is the other "standard" new line
-        } elseif ($EOL !== "\n" && strpos($message, "\n\n")) {
-            [$headers, $body] = explode("\n\n", $message, 2);
-            $headersEOL = "\n";
-            // at last resort find anything that looks like a new line
+        $pos2LF = strpos($message, "\n\n");
+        $pos2CRLF = strpos($message, "\r\n\r\n");
+        if ($pos2LF === false) {
+            // $pos2CRLF has value
+            $EOL = "\r\n";
+        } else if ($pos2CRLF === false) {
+            // $pos2LF  has value
+            $EOL = "\n";
         } else {
-            // [$headers, $body] = preg_split("%([\r\n]+)\\1%U", $message, 2);
-            $headers = '';
-            $body = $message;
+            // both have value , check who has the lowest position
+            $EOL = $pos2LF < $pos2CRLF ? "\n" : "\r\n";
         }
 
-        $headers = self::parseHeaders($headers, $headersEOL);
+        // Split headers and body
+        [$headers, $body] = array_pad(explode($EOL . $EOL, $message, 2), 2, '');
 
-        return compact('headers', 'body');
+        $parsedHeaders = [];
+
+        // !!prevent below string from getting 3 headers( we need 2):
+        // Date: Thu, 8 May 2025 19:50:31 +0800 (CST)
+        // Content-Type: multipart/report; report-type=disposition-notification; 
+        //     boundary="----=_Part_95_1990814047.1746705031593
+
+        $headers = preg_replace('/;\s*\r?\n\s*/', ';', $headers);
+        // $headers =  preg_replace('/\r\n/', "\n", $headers);
+        foreach (explode($EOL, trim($headers)) as $headerLine) {
+            if (strlen($headerLine) < 4) {
+                // avoid getting ":" header things
+                continue;
+            }
+            [$name, $value] = array_pad(explode(':', $headerLine, 2),2,'');
+            $parsedHeaders[trim($name)] = trim($value);
+        }
+
+        return [
+            'headers' => $parsedHeaders,
+            'body' => trim((string) $body) // Cast to empty string if null
+        ];
+
+
     }
 
     public static function parseHeaders($headers, $oel = "\n")
@@ -181,13 +229,13 @@ class Utils
      */
     public static function normalizeHeader($header)
     {
-        if (! \is_array($header)) {
+        if (!\is_array($header)) {
             return array_map('trim', explode(',', $header));
         }
         $result = [];
         foreach ($header as $value) {
             foreach ((array) $value as $v) {
-                if (! str_contains($v, ',')) {
+                if (!str_contains($v, ',')) {
                     $result[] = $v;
 
                     continue;
@@ -219,7 +267,7 @@ class Utils
                 // some servers don't support "x-"
                 $values = str_replace('x-pkcs7-', 'pkcs7-', $values);
             }
-            $result .= $name.': '.$values.$eol;
+            $result .= $name . ': ' . $values . $eol;
         }
 
         return $result;
@@ -255,10 +303,10 @@ class Utils
         }
 
         return date('Y-m-d')
-            .'-'.
+            . '-' .
             uniqid('', true)
-            .'@'.
-            ($partner ? strtolower($partner).'.' : '')
+            . '@' .
+            ($partner ? strtolower($partner) . '.' : '')
             .
             str_replace(' ', '', php_uname('n'));
     }

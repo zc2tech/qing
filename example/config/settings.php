@@ -1,10 +1,11 @@
 <?php
 
 use Monolog\Handler\StreamHandler;
+use Psr\Log\LogLevel;
 
 // use Monolog\Logger;
 
-$storagePath = __DIR__.'/../storage';
+$storagePath = __DIR__ . '/../storage';
 
 return [
     /**
@@ -14,14 +15,14 @@ return [
 
     'logHandlers' => [
         // TODO: some hosting providers doesn't support 'php://stdout'
-        new StreamHandler('php://stdout'),
-        // new StreamHandler($storagePath.'/logs/app.log', Logger::DEBUG),
+        new StreamHandler('php://stdout',LogLevel::ERROR),
+        new StreamHandler($storagePath.'/logs/app.log', LogLevel::ERROR),
     ],
 
     'management' => [
         /**
-         * @see \AS2\Management::$options
-         */
+     * @see \AS2\Management::$options
+     */
     ],
 
     'storage' => [

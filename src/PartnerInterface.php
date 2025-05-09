@@ -34,6 +34,7 @@ interface PartnerInterface
      */
     public function getContentTransferEncoding();
 
+    public function getVerifySSLSite();
     /**
      * @return string
      */

@@ -76,6 +76,14 @@ class Partner extends DataObject implements PartnerInterface
     /**
      * @return string
      */
+    public function getVerifySSLSite()
+    {
+        return $this->getData('verify_ssl_site');
+    }
+
+    /**
+     * @return string
+     */
     public function getAuthPassword()
     {
         return $this->getData('auth_password');

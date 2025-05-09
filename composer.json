@@ -1,12 +1,12 @@
 {
-    "name": "tiamo/phpas2",
-    "description": "PHPAS2 is a php-based implementation of the EDIINT AS2 standard",
+    "name": "zc2tech/qing",
+    "description": "qing is a php-based implementation of the EDIINT AS2 standard, forked from tiamo/phpas2. \n Maggie Cheung delivered an exceptional performance in the film Green Snake.",
     "type": "library",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "authors": [
         {
-            "name": "Vladyslav K",
-            "email": "vk.tiamo@gmail.com"
+            "name": "Julian Xu",
+            "email": "julian.xu@aliyun.com"
         }
     ],
     "keywords": [
@@ -18,16 +18,16 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^7.1 || ^7.2 || ^7.3 || ^7.4 || ^8.0 || ^8.1",
+        "php": "^8.2",
+        "monolog/monolog": "^1.1",
         "ext-openssl": "*",
         "ext-zlib": "*",
         "ext-ctype": "*",
-        "guzzlehttp/guzzle": "^6.5 || ^7.0",
-        "phpseclib/phpseclib": "^3.0.8",
-        "psr/log": "^1.1"
+        "guzzlehttp/guzzle": "^7.9",
+        "phpseclib/phpseclib": "^3.0.43",
+        "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "friendsofphp/php-cs-fixer": "^3.1",
         "phpunit/phpunit": "^9.6.11",
         "symfony/var-dumper": "^4.0"
     },

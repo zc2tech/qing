@@ -1,0 +1,8 @@
+POST https://zc2tech.xyz:8043/as2/HttpReceiver
+
+####
+GET https://zc2tech.xyz:8043/hello/world
+
+#####
+
+GET http://192.168.12.9/hello/world

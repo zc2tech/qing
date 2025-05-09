@@ -5,36 +5,36 @@ use App\Repositories\PartnerRepository;
 use AS2\Management;
 use Monolog\Logger;
 
-return function ($container) {
-
-    $container['MessageRepository'] = function ($c) {
-        return new MessageRepository([
-            'path' => $c['settings']['storage']['path'].'/messages',
-        ]);
-    };
-
-    $container['PartnerRepository'] = function ($c) {
-        return new PartnerRepository(
-            require __DIR__.'/../config/partners.php'
-        );
-    };
-
-    $container['logger'] = function ($c) {
-        $logger = new Logger('app');
-        if (! empty($c['settings']['logHandlers'])) {
-            foreach ($c['settings']['logHandlers'] as $handler) {
-                $logger->pushHandler($handler);
-            }
+function _newLogger($settings): Logger
+{
+    $logger = new Logger('app');
+    if (! empty($settings['logHandlers'])) {
+        foreach ($settings['logHandlers'] as $handler) {
+            $logger->pushHandler($handler);
         }
+    }
 
-        return $logger;
-    };
+    return $logger;
+}
 
-    $container['manager'] = function ($c) {
-        $manager = new Management($c['settings']['management']);
-        $manager->setLogger($c['logger']);
+function _newManager(Logger $log,$settings): Management
+{
+    $manager = new Management($settings['management']);
+    $manager->setLogger($log);
+    return $manager;
+}
 
-        return $manager;
-    };
 
-};
+function _getContainerArr($c)
+{
+    $logger = _newLogger($c);
+    $partners =  require __DIR__ . '/../config/partners.php';
+    return [
+        'MessageRepository' =>  new MessageRepository([
+            'path' => $c['storage']['path'] . '/messages',
+        ]),
+        'PartnerRepository' =>  new PartnerRepository($partners,$logger),
+        'Logger' => $logger,
+        'manager' => _newManager($logger,$c)
+    ];
+}

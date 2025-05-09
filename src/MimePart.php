@@ -7,7 +7,9 @@ use GuzzleHttp\Psr7\Utils as PsrUtils;
 use Psr\Http\Message\MessageInterface as PsrMessageInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
-
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Psr\Log\LogLevel;
 class MimePart implements PsrMessageInterface
 {
     use MessageTrait;
@@ -45,6 +47,18 @@ class MimePart implements PsrMessageInterface
      * @var array
      */
     protected $parts = [];
+    private static ?Logger $logger = null;
+    static function _newLogger(): void
+    {
+        $storagePath = __DIR__ . '/../storage';
+        self::$logger = new Logger('MimePart');
+        $logHandler1 = new StreamHandler('php://stdout',LogLevel::ERROR);
+        //$logHandler2  = new StreamHandler($storagePath.'/logs/app.log', LogLevel::DEBUG);
+        self::$logger->pushHandler($logHandler1);
+        //self::$logger->pushHandler($logHandler2);
+    }
+
+
 
     /**
      * MimePart constructor.
@@ -55,13 +69,18 @@ class MimePart implements PsrMessageInterface
      */
     public function __construct($headers = [], $body = null, $rawMessage = null)
     {
+        if(self::$logger === null) {
+            self::_newLogger();
+        }
+
         if ($rawMessage !== null) {
             $this->rawMessage = $rawMessage;
         }
 
-        $this->setHeaders($this->normalizeHeaders($headers));
+        $normal_headers = $this->normalizeHeaders($headers);
+        $this->setHeaders($normal_headers);
 
-        if (! is_null($body)) {
+        if (!is_null($body)) {
             $this->setBody($body);
         }
     }
@@ -104,11 +123,10 @@ class MimePart implements PsrMessageInterface
      *
      * @return static
      */
-    public static function fromString($rawMessage, $saveRaw = true)
+    public static function fromString($rawMessage, $saveRaw = false):MimePart
     {
         $payload = Utils::parseMessage($rawMessage);
-
-        return new static($payload['headers'], $payload['body'], $saveRaw ? $rawMessage : null);
+        return new MimePart($payload['headers'], $payload['body'], $saveRaw ? $rawMessage : null);
     }
 
     /**
@@ -307,21 +325,31 @@ class MimePart implements PsrMessageInterface
      */
     public function getBody(): StreamInterface
     {
-        $body = $this->body;
+        if(is_null($this->body) || $this->body == "") {
+            $this->assembleBody();
+        }
+        return PsrUtils::streamFor($this->body);
+    }
+    public function assembleBody() {
+        $body = "";
         if (\count($this->parts) > 0) {
             $boundary = $this->getParsedHeader('content-type', 0, 'boundary');
             if ($boundary) {
                 // $body .= self::EOL;
                 foreach ($this->getParts() as $part) {
                     // $body .= self::EOL;
-                    $body .= '--'.$boundary.self::EOL;
-                    $body .= $part->toString().self::EOL;
+                    $body .= '--' . $boundary . self::EOL;
+                    $body .= $part->toString() . self::EOL;
                 }
-                $body .= '--'.$boundary.'--'.self::EOL;
+                $body .= '--' . $boundary . '--' . self::EOL;
             }
         }
+        $this->body = $body;
+    }
 
-        return PsrUtils::streamFor($body);
+    public function getPureBody(): String
+    {
+        return $this->body;
     }
 
     /**
@@ -341,6 +369,12 @@ class MimePart implements PsrMessageInterface
      */
     public function setBody($body)
     {
+        // anytime, I want to keep the original value;
+        $this->body = $body;
+        if ($this->isEncrypted()) {
+            return $this;
+        }
+
         if ($body instanceof static) {
             $this->addPart($body);
         } elseif (\is_array($body)) {
@@ -348,35 +382,24 @@ class MimePart implements PsrMessageInterface
                 $this->addPart($part);
             }
         } else {
+            // decrypted string, need us to parse
+            // Content-Type: multipart/related; boundary="kdflkajfdksadjfklasdjfkljdfdsfdkf"; type="text/xml"
             $boundary = $this->getParsedHeader('content-type', 0, 'boundary');
-
             if ($boundary) {
-                $parts = explode('--'.$boundary, $body);
+                // $parts = explode('--' . $boundary, $body);
+                $parts = explode("--$boundary", $body);
                 array_shift($parts); // remove unecessary first element
                 array_pop($parts); // remove unecessary last element
-
+                $parts = array_filter($parts, fn($part) => !empty(trim($part)));
                 foreach ($parts as $part) {
                     // $part = preg_replace('/^\r?\n|\r?\n$/','',$part);
                     // Using substr instead of preg_replace as that option is removing multiple break lines instead of only one
 
-                    // /^\r?\n/
-                    if (str_starts_with($part, "\r\n")) {
-                        $part = substr($part, 2);
-                    } elseif ($part[0] === "\n") {
-                        $part = substr($part, 1);
-                    }
-                    // /\r?\n$/
-                    if (str_ends_with($part, "\r\n")) {
-                        $part = substr($part, 0, -2);
-                    } elseif (str_ends_with($part, "\n")) {
-                        $part = substr($part, 0, -1);
-                    }
-
-                    $this->addPart($part);
+                    $partMime = self::fromString($part);
+                    $this->addPart($partMime);
+                    // $i++;
                 }
-            } else {
-                $this->body = $body;
-            }
+            } 
         }
 
         return $this;
@@ -403,7 +426,7 @@ class MimePart implements PsrMessageInterface
             return $this->rawMessage;
         }
 
-        return $this->getHeaderLines().self::EOL.$this->getBodyString();
+        return $this->getHeaderLines() . self::EOL . $this->getBodyString();
     }
 
     /**

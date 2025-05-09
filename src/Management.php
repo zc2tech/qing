@@ -68,7 +68,7 @@ class Management implements LoggerAwareInterface
         $payload = new MimePart(
             [
                 'Content-Type' => $contentType ?: 'text/plain',
-                'Content-Disposition' => 'attachment; filename="'.basename($filePath).'"',
+                'Content-Disposition' => 'attachment; filename="' . basename($filePath) . '"',
                 'Content-Transfer-Encoding' => $encoding,
             ],
             file_get_contents($filePath)
@@ -88,6 +88,7 @@ class Management implements LoggerAwareInterface
      */
     public function buildMessage(MessageInterface $message, $payload)
     {
+        // file_put_contents('payload_in_buildMessage',$payload);
         $sender = $message->getSender();
         if (! $sender) {
             throw new \InvalidArgumentException('Unknown Sender');
@@ -117,10 +118,11 @@ class Management implements LoggerAwareInterface
             'Ediint-Features' => self::EDIINT_FEATURES,
         ];
 
-        if (! $payload instanceof MimePart) {
+        if (! $payload instanceof MimePart) {            
             $payload = MimePart::fromString($payload);
+            // file_put_contents('payload_in_buildMessage2.log',$payload);
         }
-
+        // file_put_contents('payload_in_buildMessage3.log',$payload);
         $encoding = $receiver->getContentTransferEncoding();
         $micContent = Utils::canonicalize($payload);
 
@@ -135,6 +137,7 @@ class Management implements LoggerAwareInterface
 
         // Sign the message if requested in the profile
         if ($signAlgo = $receiver->getSignatureAlgorithm()) {
+            // file_put_contents('payload_in_buildMessage4.log',$payload);
             $this->getLogger()->debug('Signing the message using partner key');
 
             //            // If MIC content is set, i.e. message has been signed then calculate the MIC
@@ -145,10 +148,7 @@ class Management implements LoggerAwareInterface
             //                $micAlgo = trim($micAlgo);
             //            }
 
-            $mic = CryptoHelper::calculateMIC($micContent, $signAlgo, false);
-
-            // dd($mic);
-
+            $mic = CryptoHelper::calculateMIC($micContent, $signAlgo, true);
             $message->setMic($mic);
 
             $this->getLogger()->debug(
@@ -157,7 +157,7 @@ class Management implements LoggerAwareInterface
                     'mic' => $message->getMic(),
                 ]
             );
-
+            // file_put_contents('payload_in_buildMessage5.log',$payload);
             $payload = CryptoHelper::sign(
                 $payload,
                 $sender->getCertificate(),
@@ -213,6 +213,7 @@ class Management implements LoggerAwareInterface
             $as2headers[$name] = implode(', ', $values);
         }
 
+        // $as2Message = new MimePart($as2headers, $payload->getBodyString());
         $as2Message = new MimePart($as2headers, $payload->getBodyString());
 
         $message->setHeaders($as2Message->getHeaderLines());
@@ -228,7 +229,7 @@ class Management implements LoggerAwareInterface
      *
      * @return MimePart
      */
-    public function processMessage(MessageInterface $message, MimePart $payload)
+    public function processMessage(MessageInterface $message, MimePart $payload):MimePart
     {
         $this->getLogger()->info(
             'Begin Processing of received AS2 message',
@@ -236,21 +237,23 @@ class Management implements LoggerAwareInterface
                 'message_id' => $message->getMessageId(),
             ]
         );
-
-        $body = Utils::normalizeBase64($payload->getBodyString());
+        $payloadOrigin = $payload; // the copy that has original http headers
+        // $body = Utils::normalizeBase64($payload->getBodyString());
 
         // Force encode binary data to base64, `openssl_pkcs7_` doesn't work with binary data
-        if (! Utils::decodeBase64($body)) {
-            $body = Utils::encodeBase64($body);
-            $payload->setBody($body);
-        }
+        // if (! Utils::decodeBase64($body)) {
+        //     $body = Utils::encodeBase64($body);
+        //     $payload->setBody($body);
+        // }
 
-        unset($body);
+        // unset($body);
 
         // Check if message from this partner are expected to be encrypted
         if (! $payload->isEncrypted() && $message->getSender()->getEncryptionAlgorithm()) {
-            throw new \RuntimeException(sprintf('Incoming message from AS2 partner `%s` are defined to be encrypted',
-                $message->getSender()->getAs2Id()));
+            throw new \RuntimeException(sprintf(
+                'Incoming message from AS2 partner `%s` are defined to be encrypted',
+                $message->getSender()->getAs2Id()
+            ));
         }
 
         $isDecompressed = false;
@@ -259,9 +262,13 @@ class Management implements LoggerAwareInterface
 
         // Check if payload is encrypted and if so decrypt it
         if ($payload->isEncrypted()) {
-            $this->getLogger()->debug('Inbound AS2 message is encrypted.');
+            $this->getLogger()->debug(
+                'Inbound AS2 message is encrypted.'
+            );
+
+            $bodyFile= CryptoHelper::getTempFilename($payload->getBodyString());
             $payload = CryptoHelper::decrypt(
-                $payload,
+                $bodyFile,
                 $message->getReceiver()->getCertificate(),
                 [
                     $message->getReceiver()->getPrivateKey(),
@@ -293,7 +300,6 @@ class Management implements LoggerAwareInterface
             $message->setSigned();
 
             // Get the partners public and ca certificates
-            // TODO: refactory
             $cert = $message->getSender()->getCertificate();
 
             if (empty($cert)) {
@@ -318,17 +324,15 @@ class Management implements LoggerAwareInterface
              * doing any decompression but include headers for unsigned messages
              * (see RFC4130 section 7.3.1 for details)
              */
-            $micAlg = $payload->getParsedHeader('Disposition-Notification-Options', 2, 0);
+            $micAlg = $payloadOrigin->getParsedHeader('Disposition-Notification-Options', 2, 0);
             if (! $micAlg) {
                 $micAlg = $payload->getParsedHeader('Content-Type', 0, 'micalg');
             }
-
             foreach ($payload->getParts() as $part) {
                 if (! $part->isPkc7Signature()) {
                     $payload = $part;
                 }
             }
-
             $micContent = $payload;
         }
 
@@ -375,12 +379,14 @@ class Management implements LoggerAwareInterface
             $options = [
                 'headers' => $payload->getHeaders(),
                 'body' => $payload->getBodyString(),
-                //  'cert' => '' // TODO: partner https cert ?
+                //  'cert' => '' // TODO: partner https cert or 'verify' ?
             ];
 
             if ($partner->getAuthMethod()) {
                 $options['auth'] = [$partner->getAuthUser(), $partner->getAuthPassword(), $partner->getAuthMethod()];
             }
+            
+            $options['verify'] = $partner->getVerifySSLSite();
 
             /** @noinspection PhpUnhandledExceptionInspection */
             $response = $this->getHttpClient()->request('POST', $partner->getTargetUrl(), $options);
@@ -447,7 +453,7 @@ class Management implements LoggerAwareInterface
 
         // Raise error if message is not an MDN
         if (! $payload->isReport()) {
-            throw new \RuntimeException('MDN report not found in the response ['.$payload.']');
+            throw new \RuntimeException('MDN report not found in the response [' . $payload . ']');
         }
 
         $messageId = $message->getMessageId();
@@ -471,18 +477,22 @@ class Management implements LoggerAwareInterface
 
                             // Compare the MIC of the received message
                             $receivedMic = $bodyPayload->getHeaderLine('Received-Content-MIC');
-                            if ($receivedMic
+                            if (
+                                $receivedMic
                                 && $message->getMic()
                                 && Utils::normalizeMic($message->getMic()) !== Utils::normalizeMic($receivedMic)
                             ) {
-                                throw new \RuntimeException(sprintf('The Message Integrity Code (MIC) does not match the sent AS2 message (required: %s, returned: %s)',
-                                    $message->getMic(), $receivedMic));
+                                throw new \RuntimeException(sprintf(
+                                    'The Message Integrity Code (MIC) does not match the sent AS2 message (required: %s, returned: %s)',
+                                    $message->getMic(),
+                                    $receivedMic
+                                ));
                             }
 
                             $message->setMdnStatus(MessageInterface::MDN_STATUS_RECEIVED);
                             $this->getLogger()->debug('File Transferred successfully to the partner');
                         } else {
-                            throw new \RuntimeException('Partner failed to process file. '.$mdnStatus);
+                            throw new \RuntimeException('Partner failed to process file. ' . $mdnStatus);
                         }
                     }
                 } catch (\Exception $e) {
@@ -514,7 +524,7 @@ class Management implements LoggerAwareInterface
     public function buildMdn(MessageInterface $message, $confirmationText = null, $errorMessage = null)
     {
         // Parse Message Headers
-        $messageHeaders = MimePart::fromString(trim($message->getHeaders())."\r\n\r\n");
+        $messageHeaders = MimePart::fromString(trim($message->getHeaders()) . "\r\n\r\n");
 
         // In case no MDN is requested exit from process
         if (! $messageHeaders->hasHeader('disposition-notification-to')) {
@@ -540,16 +550,16 @@ class Management implements LoggerAwareInterface
             } elseif ($sender->getMdnSubject()) {
                 $confirmationText = $sender->getMdnSubject();
             } else {
-                $confirmationText = 'Your message was successfully received and processed.';
+                $confirmationText = 'Your message was successfully received and processed by zc2tech/qing sever.';
             }
         }
 
         $messageId = $message->getMessageId();
         $this->getLogger()->debug(sprintf('Generating outbound MDN, setting message id to `%s`', $messageId));
 
-        $boundary = '=_'.sha1(uniqid('', true));
+        $boundary = '=_' . sha1(uniqid('', true));
         $reportHeaders = [
-            'Content-Type' => 'multipart/report; report-type=disposition-notification; boundary="----'.$boundary.'"',
+            'Content-Type' => 'multipart/report; report-type=disposition-notification; boundary="----' . $boundary . '"',
         ];
 
         $isSigned = $messageHeaders->hasHeader('disposition-notification-options');
@@ -558,7 +568,7 @@ class Management implements LoggerAwareInterface
 
         // Set up the message headers
         $mdnHeaders = [
-            'Message-ID' => '<'.Utils::generateMessageID($receiver).'>',
+            'Message-ID' => '<' . Utils::generateMessageID($receiver) . '>',
             'Date' => date('r'),
             'AS2-From' => $receiver->getAs2Id(),
             'AS2-To' => $sender->getAs2Id(),
@@ -583,23 +593,25 @@ class Management implements LoggerAwareInterface
                     'Content-Type' => 'text/plain',
                     'Content-Transfer-Encoding' => '7bit', // TODO: check 8bit
                 ],
-                $confirmationText."\n"
+                $confirmationText . "\n"
             )
         );
 
         // Build the MDN message and add to report
         $mdnData = [
             'Reporting-UA' => self::USER_AGENT,
-            'Original-Recipient' => 'rfc822; '.$receiver->getAs2Id(),
-            'Final-Recipient' => 'rfc822; '.$receiver->getAs2Id(),
-            'Original-Message-ID' => '<'.$message->getMessageId().'>',
-            'Disposition' => 'automatic-action/MDN-sent-automatically; processed'.($errorMessage ? '/error: '.$errorMessage : ''),
+            'Original-Recipient' => 'rfc822; ' . $receiver->getAs2Id(),
+            'Final-Recipient' => 'rfc822; ' . $receiver->getAs2Id(),
+            'Original-Message-ID' => '<' . $message->getMessageId() . '>',
+            'Disposition' => 'automatic-action/MDN-sent-automatically; processed' 
+                . ($errorMessage ? '/error: ' . $errorMessage : ''),
         ];
 
         if ($mic = $message->getMic()) {
             $mdnData['Received-Content-MIC'] = $mic;
         }
-
+        // file_put_contents('mdnData.json',json_encode($mdnData));
+        // file_put_contents('report1.log',$report);
         $report->addPart(
             new MimePart(
                 [
@@ -610,16 +622,20 @@ class Management implements LoggerAwareInterface
             )
         );
 
+        // regardless signed or not
+        $report->assembleBody();
         // If signed MDN is requested by partner then sign the MDN and attach to report
         if ($isSigned) {
             // TODO: check
+           
             $notificationOptions = $messageHeaders->getHeader('disposition-notification-options');
             $notificationOptions = Utils::parseHeader($notificationOptions);
 
             $micAlg = isset($notificationOptions[2]) ? reset($notificationOptions[2]) : null;
 
-            $this->getLogger()->debug('Outbound MDN has been signed.');
-
+            $this->getLogger()->debug('Signed MDN has been requested.');
+           
+            // file_put_contents('report2.log',$report);
             $report = CryptoHelper::sign(
                 $report,
                 $receiver->getCertificate(),
@@ -630,6 +646,7 @@ class Management implements LoggerAwareInterface
                 $mdnHeaders,
                 $micAlg
             );
+            // file_put_contents('report3.log',$report->toString());
         }
 
         $this->getLogger()->debug(sprintf('Outbound MDN created for AS2 message `%s`.', $messageId));
@@ -736,10 +753,8 @@ class Management implements LoggerAwareInterface
     /**
      * @return $this
      */
-    public function setLogger(LoggerInterface $logger)
+    public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;
-
-        return $this;
     }
 }

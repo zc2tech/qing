@@ -7,6 +7,7 @@ use GuzzleHttp\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Symfony\Component\VarDumper\VarDumper;
 
 class Server
 {
@@ -49,12 +50,8 @@ class Server
      *
      * @return Response
      */
-    public function execute(ServerRequestInterface $request = null)
+    public function execute(?ServerRequestInterface $request)
     {
-        if (! $request) {
-            $request = ServerRequest::fromGlobals();
-        }
-
         $responseStatus = 200;
         $responseHeaders = [];
         $responseBody = null;
@@ -74,20 +71,29 @@ class Server
             );
 
             foreach (['message-id', 'as2-from', 'as2-to'] as $header) {
-                if (! $request->hasHeader($header)) {
+                if (!$request->hasHeader($header)) {
                     throw new \InvalidArgumentException(sprintf('Missing required header `%s`.', $header));
                 }
             }
+
+            // $requestBody = $request->getBody()->getContents();
+            // // Save raw message for debugging
+            // file_put_contents('as2_raw_message.raw', $requestBody);
 
             // Get the message id, sender and receiver AS2 IDs
             $messageId = trim($request->getHeaderLine('message-id'), '<>');
             $senderId = $request->getHeaderLine('as2-from');
             $receiverId = $request->getHeaderLine('as2-to');
+            //$this->logger->debug('origin log:', $request->getHeaders());
+            // file_put_contents('origin_header.json', json_encode($request->getHeaders()));
 
             $this->getLogger()->debug('Check payload to see if its an AS2 Message or ASYNC MDN.');
 
             // Load the request header and body as a MIME Email Message
             $payload = MimePart::fromPsrMessage($request);
+
+            // $this->getLogger()->debug("\n headers====" . $payload->getHeaders());
+            // $this->getLogger()->debug("\\ body====" . $payload->getBodyString());
 
             // If this is an MDN, get the message ID and check if it exists
             if ($payload->isReport()) {
@@ -110,7 +116,7 @@ class Server
                 }
 
                 $message = $this->messageRepository->findMessageById($origMessageId);
-                if (! $message) {
+                if (!$message) {
                     throw new \RuntimeException('Unknown AS2 MDN received. Will not be processed');
                 }
 
@@ -141,10 +147,11 @@ class Server
                 $message->setHeaders($payload->getHeaderLines());
 
                 try {
-                    // Process the received payload to extract the actual message from partner
-                    $payload = $this->manager->processMessage($message, $payload);
 
-                    $message->setPayload($payload);
+                    // Process the received payload to extract the actual message from partner
+                    $mimePart = $this->manager->processMessage($message, $payload);
+
+                    $message->setPayload($mimePart);
 
                     // If MDN enabled than send notification
                     // Create MDN if it requested by partner
@@ -204,7 +211,7 @@ class Server
         if (empty($responseBody)) {
             $responseBody = 'AS2 message has been received';
         }
-
+        // file_put_contents('responseBody_sent.log',$responseBody);
         return new Response($responseStatus, $responseHeaders, $responseBody);
     }
 
@@ -213,11 +220,11 @@ class Server
      */
     public function getLogger()
     {
-        if (! $this->logger) {
+        if (!$this->logger) {
             $this->logger = $this->manager->getLogger();
         }
 
-        if (! $this->logger) {
+        if (!$this->logger) {
             $this->logger = new NullLogger();
         }
 
@@ -242,7 +249,7 @@ class Server
     protected function findPartner($id)
     {
         $partner = $this->partnerRepository->findPartnerById($id);
-        if (! $partner) {
+        if (!$partner) {
             throw new \RuntimeException(sprintf('Unknown AS2 Partner with id `%s`.', $id));
         }
 

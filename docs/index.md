@@ -1,6 +1,8 @@
 # DOCUMENTATION
 
-Please have a look at an example application based on Slim3 framework.
+Please have a look at an example application based on Slim4 framework.
+If you need to deploy to http server like nginx,apache, 
+Please refer to Slim official document.
 
 You can also create your own classes.
 

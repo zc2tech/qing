@@ -36,7 +36,7 @@ class SendCommand extends Command
             ->addOption('to', null, InputOption::VALUE_REQUIRED, 'Receiver partner as2id');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $file = $input->getOption('file');
 
@@ -95,5 +95,6 @@ MSG;
         // $output->writeln('Status Message: ' . $message->getStatusMsg());
 
         $messageRepository->saveMessage($message);
+        return 0;
     }
 }

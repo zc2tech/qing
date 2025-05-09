@@ -25,10 +25,10 @@ class MessageRepository implements MessageRepositoryInterface
      *
      * @return Message
      */
-    public function findMessageById($id)
+    public function findMessageById($id): Message|null
     {
         $path = sprintf('%s/%s.json', $this->path, $id);
-        if (! file_exists($path)) {
+        if (!file_exists($path)) {
             return null;
         }
 
@@ -57,18 +57,18 @@ class MessageRepository implements MessageRepositoryInterface
 
         $path = sprintf('%s/%s', $this->path, $message->getMessageId());
 
-        // if ($headers = $message->getHeaders()) {
-        //     file_put_contents($path.'.headers', $headers);
-        // }
-        //
-        // if ($payload = $message->getPayload()) {
-        //     file_put_contents($path.'.payload', $payload);
-        // }
-        //
-        // if ($mdn = $message->getMdnPayload()) {
-        //     file_put_contents($path.'.mdn', $mdn);
-        // }
+        if ($headers = $message->getHeaders()) {
+            file_put_contents($path . '.headers', $headers);
+        }
 
-        return (bool) file_put_contents($path.'.json', json_encode($data));
+        if ($payload = $message->getPayload()) {
+            file_put_contents($path . '.payload', $payload);
+        }
+
+        if ($mdn = $message->getMdnPayload()) {
+            file_put_contents($path.'.mdn', $mdn);
+        }
+
+        return (bool) file_put_contents($path . '.json', json_encode($data));
     }
 }

@@ -1,23 +1,23 @@
 # PHPAS2 is a php-based implementation of the EDIINT AS2 standard
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/tiamo/phpas2.svg?style=flat-square)](https://packagist.org/packages/tiamo/phpas2)
-[![Build Status](https://github.com/tiamo/phpas2/actions/workflows/ci.yml/badge.svg)](https://github.com/tiamo/phpas2)
-[![Total Downloads](https://img.shields.io/packagist/dt/tiamo/phpas2.svg?style=flat-square)](https://packagist.org/packages/tiamo/phpas2)
-[![License](https://poser.pugx.org/tiamo/phpas2/license)](https://packagist.org/packages/tiamo/phpas2)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/zc2tech/qing.svg?style=flat-square)](https://packagist.org/packages/zc2tech/qing)
+[![Build Status](https://github.com/zc2tech/qing/actions/workflows/ci.yml/badge.svg)](https://github.com/zc2tech/qing)
+[![Total Downloads](https://img.shields.io/packagist/dt/zc2tech/qing.svg?style=flat-square)](https://packagist.org/packages/zc2tech/qing)
+[![License](https://poser.pugx.org/zc2tech/qing/license)](https://packagist.org/packages/zc2tech/qing)
 
-The PHPAS2 application enables you to transmit and receive AS2 messages with EDI-X12, EDIFACT, XML, or binary payloads
+This application enables you to transmit and receive AS2 messages with EDI-X12, EDIFACT, XML, or binary payloads
 between trading partners.
 
 ## Requirements
 
-* php >= 7.1
+* php >= 8.3
 * ext-openssl
 * ext-zlib
 
 ## Installation
 
 ```
-composer require tiamo/phpas2
+composer require zc2tech/qing
 ```
 
 ## Usage
@@ -43,6 +43,12 @@ php bin/console send-message --from mycompanyAS2 --to phpas2
 # send a file
 php bin/console send-message --from mycompanyAS2 --to phpas2 --file /path/to/the/file 
 ```
+## Known Issues
+
+* We may encounter below error, not sure if it's because of this library
+
+    The Message Integrity Code (MIC) does not match
+
 
 ## Changelog
 

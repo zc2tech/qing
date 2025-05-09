@@ -22,27 +22,28 @@ class CryptoHelper
      *
      * @return string
      */
-    public static function calculateMIC($payload, $algo = 'sha256', $includeHeaders = true)
+    public static function calculateMIC(MimePart|string $payload, $algo = 'sha256', $includeHeaders = true)
     {
+        $algo = $algo ?? 'sha256';
         $digestAlgorithm = str_replace('-', '', strtolower($algo));
-
-        if (! \in_array($digestAlgorithm, hash_algos(), true)) {
+        if (!\in_array($digestAlgorithm, hash_algos(), true)) {
             throw new \InvalidArgumentException(sprintf('(MIC) Invalid hash algorithm `%s`.', $digestAlgorithm));
         }
 
-        if (! $payload instanceof MimePart) {
+        if (!$payload instanceof MimePart) {
             $payload = MimePart::fromString($payload);
         }
 
+        // file_put_contents('calMID.log',$payload . "\n");
         $digest = base64_encode(
             hash(
                 $digestAlgorithm,
-                $includeHeaders ? $payload : $payload->getBodyString(),
+                $includeHeaders ? $payload . "\n" : $payload->getBodyString(),
                 true
             )
         );
 
-        return $digest.', '.$algo;
+        return $digest . ', ' . $algo;
     }
 
     /**
@@ -58,17 +59,17 @@ class CryptoHelper
      */
     public static function signPure($data, $publicKey, $privateKey = null, $headers = [], $micAlgo = null)
     {
-        if (! \is_array($privateKey)) {
+        if (!\is_array($privateKey)) {
             $privateKey = [$privateKey, false];
         }
 
         $singAlg = 'sha256';
 
         /** @var RSA\PrivateKey $private */
-        $private = RSA::load($privateKey[0], $privateKey[1])
-            ->withPadding(RSA::SIGNATURE_PKCS1)
-            ->withHash($singAlg)
-            ->withMGFHash($singAlg);
+        // $private = RSA::load($privateKey[0], $privateKey[1])
+        //     ->withPadding(RSA::SIGNATURE_PKCS1)
+        //     ->withHash($singAlg)
+        //     ->withMGFHash($singAlg);
 
         $signature = $private->sign($data);
 
@@ -191,12 +192,12 @@ class CryptoHelper
             'Content-Type' => 'application/pkcs7-signature; name=smime.p7s; smime-type=signed-data',
         ], $payload);
 
-        $boundary = '=_'.sha1(uniqid('', true));
+        $boundary = '=_' . sha1(uniqid('', true));
 
         $result = new MimePart([
-                'MIME-Version' => '1.0',
-                'Content-type' => 'multipart/signed; protocol="application/pkcs7-signature"; micalg='.$singAlg.'; boundary="----'.$boundary.'"',
-            ] + $headers);
+            'MIME-Version' => '1.0',
+            'Content-type' => 'multipart/signed; protocol="application/pkcs7-signature"; micalg=' . $singAlg . '; boundary="----' . $boundary . '"',
+        ] + $headers);
         $result->addPart($data);
         $result->addPart($signatureMime);
 
@@ -228,7 +229,7 @@ class CryptoHelper
             }
         }
 
-        if (! $signature) {
+        if (!$signature) {
             return false;
         }
 
@@ -236,13 +237,9 @@ class CryptoHelper
 
         $signedData = ASN1Helper::decode(Utils::normalizeBase64($signature), ASN1Helper::getSignedDataMap());
         if ($signedData['contentType'] === ASN1Helper::OID_SIGNED_DATA) {
-
-            // dd($signedData['content']['signers'][0]);
-
-            // file_put_contents(__DIR__ . '/1.txt', $signedData['content']['signers'][0]['signature']);
-
             /** @var RSA\PublicKey $public */
-            $public = PublicKeyLoader::load($publicKey)->withPadding(RSA::SIGNATURE_PKCS1);
+            // $public = PublicKeyLoader::load($publicKey)->withPadding(RSA::SIGNATURE_PKCS1);
+            $public = PublicKeyLoader::load($publicKey);
             foreach ($signedData['content']['signers'] as $signer) {
                 $verified &= $public->verify($data, $signer['signature']);
             }
@@ -264,37 +261,48 @@ class CryptoHelper
      */
     public static function sign($data, $cert, $privateKey = null, $headers = [], $micAlgo = null)
     {
-        $data = self::getTempFilename($data."\r\n");
-        $temp = self::getTempFilename();
+        $dataFile = self::getTempFilename($data . "\r\n");
+        $tempFile = self::getTempFilename();
 
         $flags = PKCS7_DETACHED;
 
-        if (! openssl_pkcs7_sign($data, $temp, $cert, $privateKey, $headers, $flags)) {
+        // file_put_contents('temp_before_signed.log', $data);
+        if (!openssl_pkcs7_sign($dataFile, $tempFile, $cert, $privateKey, $headers, $flags)) {
             throw new \RuntimeException(sprintf('Failed to sign S/Mime message. Error: "%s".', openssl_error_string()));
         }
 
-        $payload = MimePart::fromString(file_get_contents($temp), false);
+        // Unfortunately, openssl_pkcs7_sign does not provide a direct 
+        // way to control the formatting of the MIME output. However, 
+        // you can work around this issue by post-processing 
+        // the output to remove unnecessary line breaks.   
+
+
+        $tempContent = file_get_contents($tempFile);
+        // file_put_contents('temp_signed.log', $tempContent);
+        // After signed, I won't tamper body any more, even with MimePart::toString() function.
+        
+        $payload = MimePart::fromString($tempContent, true);
 
         if ($micAlgo) {
             $contentType = $payload->getHeaderLine('content-type');
-            $contentType = preg_replace('/micalg=(.+);/i', 'micalg="'.$micAlgo.'";', $contentType);
+            $contentType = preg_replace('/micalg=(.+);/i', 'micalg="' . $micAlgo . '";', $contentType);
 
             /** @var MimePart $payload */
             $payload = $payload->withHeader('Content-Type', $contentType);
         }
 
         // replace x-pkcs7-signature > pkcs7-signature
-        foreach ($payload->getParts() as $key => $part) {
-            if ($part->isPkc7Signature()) {
-                $payload->removePart($key);
-                $payload->addPart(
-                    $part->withoutRaw()->withHeader(
-                        'Content-Type',
-                        'application/pkcs7-signature; name=smime.p7s; smime-type=signed-data'
-                    )
-                );
-            }
-        }
+        // foreach ($payload->getParts() as $key => $part) {
+        //     if ($part->isPkc7Signature()) {
+        //         $payload->removePart($key);
+        //         $payload->addPart(
+        //             $part->withoutRaw()->withHeader(
+        //                 'Content-Type',
+        //                 'application/pkcs7-signature; name=smime.p7s; smime-type=signed-data'
+        //             )
+        //         );
+        //     }
+        // }
 
         return $payload;
     }
@@ -306,22 +314,23 @@ class CryptoHelper
      *
      * @return bool
      */
-    public static function verify($data, $caInfo = null, $rootCerts = [])
+    public static function verify($data, $publicCert, $rootCerts = [])
     {
         if ($data instanceof MimePart) {
             $temp = MimePart::createIfBinaryPart($data);
             if ($temp !== null) {
                 $data = $temp;
             }
-
+            // file_put_contents('for_verify.raw', $data);
             $data = self::getTempFilename((string) $data);
         }
-
-        if (! empty($caInfo)) {
-            foreach ((array) $caInfo as $cert) {
-                $rootCerts[] = self::getTempFilename($cert);
-            }
-        }
+        $publicCertFile = self::getTempFilename($publicCert);
+        // file_put_contents('public_cert.log', $publicCert);
+        // if (!empty($caInfo)) {
+        //     foreach ((array) $caInfo as $cert) {
+        //         $rootCerts[] = self::getTempFilename($cert);
+        //     }
+        // }
 
         $flags = PKCS7_BINARY | PKCS7_NOSIGS;
 
@@ -329,9 +338,17 @@ class CryptoHelper
         $flags |= PKCS7_NOVERIFY;
         // }
 
-        $outFile = self::getTempFilename();
+        // $outFile = self::getTempFilename();
 
-        return openssl_pkcs7_verify($data, $flags, $outFile, $rootCerts) === true;
+        return openssl_pkcs7_verify(
+            $data,
+            $flags, // Flags
+            null, // No specific output file
+            [], // CA certificates - empty as we're using the provided cert
+            $publicCertFile
+        );
+
+        // return openssl_pkcs7_verify($data, $flags, $outFile, $rootCerts) === true;
     }
 
     /**
@@ -343,23 +360,26 @@ class CryptoHelper
      */
     public static function encrypt($data, $cert, $cipher = OPENSSL_CIPHER_AES_128_CBC)
     {
-        $data = self::getTempFilename((string) $data);
+        $dataFile = self::getTempFilename((string) $data);
 
         if (\is_string($cipher)) {
             $cipher = strtoupper($cipher);
             $cipher = str_replace('-', '_', $cipher);
-            if (\defined('OPENSSL_CIPHER_'.$cipher)) {
-                $cipher = \constant('OPENSSL_CIPHER_'.$cipher);
+            if (\defined('OPENSSL_CIPHER_' . $cipher)) {
+                $cipher = \constant('OPENSSL_CIPHER_' . $cipher);
             }
         }
 
-        $temp = self::getTempFilename();
-        if (! openssl_pkcs7_encrypt($data, $temp, $cert, [], PKCS7_BINARY, $cipher)) {
-            throw new \RuntimeException(sprintf('Failed to encrypt S/Mime message. Error: "%s".',
-                openssl_error_string()));
+        // file_put_contents('before encrypt.log',$data);
+        $tempFile = self::getTempFilename();
+        if (!openssl_pkcs7_encrypt($dataFile, $tempFile, $cert, [], PKCS7_BINARY, $cipher)) {
+            throw new \RuntimeException(sprintf(
+                'Failed to encrypt S/Mime message. Error: "%s".',
+                openssl_error_string()
+            ));
         }
 
-        return MimePart::fromString(file_get_contents($temp), false);
+        return MimePart::fromString(file_get_contents($tempFile), false);
     }
 
     /**
@@ -367,19 +387,34 @@ class CryptoHelper
      *
      * @return MimePart
      */
-    public static function decrypt($data, $cert, $privateKey = null)
+    public static function decrypt($data, $cert, $privateKey = null):MimePart
     {
         if ($data instanceof MimePart) {
             $data = self::getTempFilename((string) $data);
         }
 
         $temp = self::getTempFilename();
-        if (! openssl_pkcs7_decrypt($data, $temp, $cert, $privateKey)) {
-            throw new \RuntimeException(sprintf('Failed to decrypt S/Mime message. Error: "%s".',
-                openssl_error_string()));
+        // if (! openssl_pkcs7_decrypt($data, $temp, $cert, $privateKey)) {
+        //     throw new \RuntimeException(sprintf('Failed to decrypt S/Mime message. Error: "%s".',
+        //         openssl_error_string()));
+        // }
+        if (
+            !openssl_cms_decrypt(
+                $data,
+                $temp,
+                $cert,
+                $privateKey,
+                OPENSSL_ENCODING_DER
+            )
+        ) {
+            throw new \RuntimeException(sprintf(
+                'Failed to decrypt S/Mime message. Error: "%s".',
+                openssl_error_string()
+            ));
         }
-
-        return MimePart::fromString(file_get_contents($temp));
+        $raw_decrypted = file_get_contents($temp);
+        // file_put_contents('raw_decrypted', $raw_decrypted);
+        return MimePart::fromString($raw_decrypted);
     }
 
     /**
@@ -403,7 +438,7 @@ class CryptoHelper
         }
 
         $headers = [
-            'Content-Type' => MimePart::TYPE_PKCS7_MIME.'; name="smime.p7z"; smime-type='.MimePart::SMIME_TYPE_COMPRESSED,
+            'Content-Type' => MimePart::TYPE_PKCS7_MIME . '; name="smime.p7z"; smime-type=' . MimePart::SMIME_TYPE_COMPRESSED,
             'Content-Description' => 'S/MIME Compressed Message',
             'Content-Disposition' => 'attachment; filename="smime.p7z"',
             'Content-Transfer-Encoding' => $encoding,
