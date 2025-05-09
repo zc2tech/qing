@@ -238,13 +238,13 @@ class Management implements LoggerAwareInterface
             ]
         );
         $payloadOrigin = $payload; // the copy that has original http headers
-        // $body = Utils::normalizeBase64($payload->getBodyString());
+        $body = Utils::normalizeBase64($payload->getBodyString());
 
         // Force encode binary data to base64, `openssl_pkcs7_` doesn't work with binary data
-        // if (! Utils::decodeBase64($body)) {
-        //     $body = Utils::encodeBase64($body);
-        //     $payload->setBody($body);
-        // }
+        if (! Utils::decodeBase64($body)) {
+            $body = Utils::encodeBase64($body);
+            $payload->setBody($body);
+        }
 
         // unset($body);
 
@@ -266,7 +266,8 @@ class Management implements LoggerAwareInterface
                 'Inbound AS2 message is encrypted.'
             );
 
-            $bodyFile= CryptoHelper::getTempFilename($payload->getBodyString());
+            //$bodyFile= CryptoHelper::getTempFilename($payload->getBodyString());
+            $bodyFile= CryptoHelper::getTempFilename($payload);
             $payload = CryptoHelper::decrypt(
                 $bodyFile,
                 $message->getReceiver()->getCertificate(),

@@ -4,6 +4,7 @@ composer.phar
 composer.lock
 .DS_Store
 Thumbs.db
+memo.txt
 /phpunit.xml
 /.idea
 /.vscode

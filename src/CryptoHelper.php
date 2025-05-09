@@ -22,28 +22,68 @@ class CryptoHelper
      *
      * @return string
      */
-    public static function calculateMIC(MimePart|string $payload, $algo = 'sha256', $includeHeaders = true)
+    public static function calculateMIC(MimePart|string $payload, $algOrigin = 'sha256', $includeHeaders = true)
     {
-        $algo = $algo ?? 'sha256';
-        $digestAlgorithm = str_replace('-', '', strtolower($algo));
-        if (!\in_array($digestAlgorithm, hash_algos(), true)) {
-            throw new \InvalidArgumentException(sprintf('(MIC) Invalid hash algorithm `%s`.', $digestAlgorithm));
+        // sample values in hash_algos()
+        // [4] => sha224
+        // [5] => sha256
+        // [6] => sha384
+        // [7] => sha512/224
+        // [8] => sha512/256
+        // [9] => sha512
+        // [10] => sha3-224
+        // [11] => sha3-256
+        $algPHP = 'sha256';
+        $algOrigin = $algOrigin ?? "sha-256";
+        if (preg_match('/\d-\d{3}$/', $algOrigin)) {
+            // sha3-224 etc ...
+            $algPHP = $algOrigin;
+        } else {
+            $algPHP = str_replace('-', '', strtolower($algOrigin));
         }
 
-        if (!$payload instanceof MimePart) {
-            $payload = MimePart::fromString($payload);
+
+        if (!\in_array($algPHP, hash_algos(), true)) {
+            throw new \InvalidArgumentException(sprintf('(MIC) Invalid hash algorithm `%s`.', $algPHP));
         }
 
-        // file_put_contents('calMID.log',$payload . "\n");
+        // if (!$payload instanceof MimePart) {
+        //     $payload = MimePart::fromString($payload);
+        // }
+        $data = '';
+        if( is_string($payload) ) {
+            $data = $payload;
+        } else {
+            if ($payload instanceof MimePart) {
+                // maybe we can get rawMessage ?
+                $data = $includeHeaders ? $payload : $payload->getBodyString();
+            }
+        }
+
+        // 1. Replace leading \n (not \r\n) with \r\n
+        $data = preg_replace('/^(?!\r)\n/m', "\r\n", $data);
+
+        // 2. Add trailing \r\n
+        if (substr($data, -2) === "\r\n") {
+            // do nothing
+        } else if (substr($data, -1) === "\n") {
+            // last is "\n" or any other char
+            $data = rtrim($data, "\n") . "\r\n";
+        } else {
+            // do nothing
+        }
+        // file_put_contents('calMID.log', $data);
+
         $digest = base64_encode(
             hash(
-                $digestAlgorithm,
-                $includeHeaders ? $payload . "\n" : $payload->getBodyString(),
+                $algPHP,
+                $data,
                 true
             )
         );
 
-        return $digest . ', ' . $algo;
+        $algNormalized = preg_replace('/^sha(\d{3})$/', 'sha-$1', $algOrigin);
+        return $digest . ', ' . $algNormalized;
     }
 
     /**
@@ -261,7 +301,8 @@ class CryptoHelper
      */
     public static function sign($data, $cert, $privateKey = null, $headers = [], $micAlgo = null)
     {
-        $dataFile = self::getTempFilename($data . "\r\n");
+        // $dataFile = self::getTempFilename($data . "\r\n");
+        $dataFile = self::getTempFilename($data);
         $tempFile = self::getTempFilename();
 
         $flags = PKCS7_DETACHED;
@@ -280,7 +321,7 @@ class CryptoHelper
         $tempContent = file_get_contents($tempFile);
         // file_put_contents('temp_signed.log', $tempContent);
         // After signed, I won't tamper body any more, even with MimePart::toString() function.
-        
+
         $payload = MimePart::fromString($tempContent, true);
 
         if ($micAlgo) {
@@ -372,7 +413,7 @@ class CryptoHelper
 
         // file_put_contents('before encrypt.log',$data);
         $tempFile = self::getTempFilename();
-        if (!openssl_pkcs7_encrypt($dataFile, $tempFile, $cert, [], PKCS7_BINARY, $cipher)) {
+        if (!openssl_pkcs7_encrypt($dataFile, $tempFile, $cert, null, PKCS7_BINARY, $cipher)) {
             throw new \RuntimeException(sprintf(
                 'Failed to encrypt S/Mime message. Error: "%s".',
                 openssl_error_string()
@@ -387,31 +428,34 @@ class CryptoHelper
      *
      * @return MimePart
      */
-    public static function decrypt($data, $cert, $privateKey = null):MimePart
+    public static function decrypt($data, $cert, $privateKey = null): MimePart
     {
         if ($data instanceof MimePart) {
             $data = self::getTempFilename((string) $data);
         }
 
         $temp = self::getTempFilename();
-        // if (! openssl_pkcs7_decrypt($data, $temp, $cert, $privateKey)) {
-        //     throw new \RuntimeException(sprintf('Failed to decrypt S/Mime message. Error: "%s".',
-        //         openssl_error_string()));
-        // }
-        if (
-            !openssl_cms_decrypt(
-                $data,
-                $temp,
-                $cert,
-                $privateKey,
-                OPENSSL_ENCODING_DER
-            )
-        ) {
+        if (!openssl_pkcs7_decrypt($data, $temp, $cert, $privateKey)) {
             throw new \RuntimeException(sprintf(
                 'Failed to decrypt S/Mime message. Error: "%s".',
                 openssl_error_string()
             ));
         }
+        // if (
+        //     !openssl_cms_decrypt(
+        //         $data,
+        //         $temp,
+        //         $cert,
+        //         $privateKey,
+        //         OPENSSL_ENCODING_DER
+        //     )
+        // ) 
+        // {
+        //     throw new \RuntimeException(sprintf(
+        //         'Failed to decrypt S/Mime message. Error: "%s".',
+        //         openssl_error_string()
+        //     ));
+        // }
         $raw_decrypted = file_get_contents($temp);
         // file_put_contents('raw_decrypted', $raw_decrypted);
         return MimePart::fromString($raw_decrypted);

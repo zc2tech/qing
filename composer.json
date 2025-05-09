@@ -2,7 +2,7 @@
     "name": "zc2tech/qing",
     "description": "qing is a php-based implementation of the EDIINT AS2 standard, forked from tiamo/phpas2. \n The lib name 'qing' is because Maggie Cheung delivered an exceptional performance in the film Green Snake.",
     "type": "library",
-    "version": "v2.0.2",
+    "version": "v2.0.3",
     "authors": [
         {
             "name": "Julian Xu",

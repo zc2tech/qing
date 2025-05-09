@@ -1,0 +1,8 @@
+# Exclude folders
+/docs export-ignore
+/example export-ignore
+/tests export-ignore
+
+# Exclude specific files
+#*.log export-ignore
+#.env export-ignore

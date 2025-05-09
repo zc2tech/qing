@@ -38,16 +38,14 @@ chmod +x ./bin/console
 php -S 127.0.0.1:8000 ./public/index.php
 
 # send a test message
-php bin/console send-message --from mycompanyAS2 --to phpas2
+php bin/console send-message --from mycompanyAS2 --to phpas2_win
 
 # send a file
-php bin/console send-message --from mycompanyAS2 --to phpas2 --file /path/to/the/file 
+php bin/console send-message --from mycompanyAS2 --to phpas2_win --file /path/to/the/file 
 ```
 ## Known Issues
 
-* We may encounter below error, not sure if it's because of this library
-
-    The Message Integrity Code (MIC) does not match
+* pending
 
 
 ## Changelog

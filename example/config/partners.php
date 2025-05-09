@@ -17,7 +17,7 @@ $local_dev = [
 // ];
 
 // mendelson key3
-openssl_pkcs12_read(file_get_contents($resources.'/key3.pfx'), $key3, 'test');
+openssl_pkcs12_read(file_get_contents($resources.'/mycompanyAS2.pfx'), $key3, 'test');
 
 // $local_dev = [
 //     'cert' => file_get_contents($resources.'/phpas2.cer'),
@@ -27,6 +27,22 @@ openssl_pkcs12_read(file_get_contents($resources.'/key3.pfx'), $key3, 'test');
 $prod_t15 = file_get_contents($resources.'/prod.t15.julian.com.cer');
 $test_t15 = file_get_contents($resources.'/test.t15.julian.com1.cer');
 return [
+    [
+        // @see http://mendelson-e-c.com/as2_software
+
+        'id' => 'mycompanyAS2',
+        // 'target_url' => 'http://127.0.0.1:8000',
+        'target_url' => 'http://127.0.0.1:8000/as2/HttpReceiver',
+        'private_key' => $key3['pkey'] ?: null,
+        'certificate' => $key3['cert'] ?: null,
+        'content_type' => 'application/EDI-Consent',
+        'compression' => true,
+        'signature_algorithm' => 'sha256',
+        'encryption_algorithm' => 'AES_128_CBC',
+        // 'content_transfer_encoding' => 'binary',
+        'mdn_mode' => PartnerInterface::MDN_MODE_SYNC,
+        //'mdn_options' => 'signed-receipt-protocol=optional, pkcs7-signature; signed-receipt-micalg=optional, sha256',
+    ],
     [
         'id' => 'testacig.ariba.juilian.com',
         'email' => 't15_prod@julian.com',
@@ -52,8 +68,8 @@ return [
         'certificate' => file_get_contents($resources.'/aribacloudintegration-test.ariba.com.cer'),
         'private_key' => '',
         'auth' => 'Basic',
-        'auth_user' => 'P',
-        'auth_password' => '',
+        'auth_user' => 'P005017',
+        'auth_password' => 'Abbbb12345',
         // 'private_key_pass_phrase' => 'password',
         // 'content_type' => 'application/edi-x12',
         'content_type' => 'application/x12',
@@ -86,7 +102,7 @@ return [
     [
         'id' => 'phpas2_win',
         'email' => 'phpas2@example.com',
-        'target_url' => 'http://127.0.0.1:8000',
+        'target_url' => 'http://127.0.0.1:8000/as2/HttpReceiver',
         'certificate' => $local_dev['cert'] ?: null,
         'private_key' => $local_dev['pkey'] ?: null,
         'private_key_pass_phrase' => 'test',
@@ -94,7 +110,7 @@ return [
         'content_type' => 'application/EDI-Consent',
         'compression' => true,
         'signature_algorithm' => 'sha256',
-        'encryption_algorithm' => '3des',
+        'encryption_algorithm' => 'AES_128_CBC',
         'mdn_mode' => PartnerInterface::MDN_MODE_SYNC,
         //'mdn_options' => 'signed-receipt-protocol=optional, pkcs7-signature; signed-receipt-micalg=optional, sha256',
     ],
@@ -111,6 +127,6 @@ return [
         'signature_algorithm' => 'sha256',
         'encryption_algorithm' => '3des',
         'mdn_mode' => PartnerInterface::MDN_MODE_SYNC,
-        'mdn_options' => 'signed-receipt-protocol=optional, pkcs7-signature; signed-receipt-micalg=optional, sha256',
+       // 'mdn_options' => 'signed-receipt-protocol=optional, pkcs7-signature; signed-receipt-micalg=optional, sha256',
     ],
 ];
