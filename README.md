@@ -43,15 +43,13 @@ php bin/console send-message --from mycompanyAS2 --to phpas2_win
 # send a file
 php bin/console send-message --from mycompanyAS2 --to phpas2_win --file /path/to/the/file 
 ```
-## Known Issues
 
-* pending
+This library is a fork of [tiamo/phpas2](https://github.com/tiamo/phpas2) which did not 
+release updates since September 2023.
+I updated code to adapt to recent php/library: php8, Slim 4, Symfony 7 .
 
+AS2 is a transport protocol specified in [RFC 4130](http://www.ietf.org/rfc/rfc4130.txt).
+AS2 version 1.1 adding compression is specified in [RFC 5402](http://www.ietf.org/rfc/rfc5402.txt).
+The MDN is specified in [RFC 3798](http://www.ietf.org/rfc/rfc3798.txt).
+Algorithm names are defined in [RFC 5751](https://www.ietf.org/rfc/rfc5751.txt) (S/MIME 3.2) which supersedes [RFC 3851](https://www.ietf.org/rfc/rfc3851.txt) (S/MIME 3.1);
 
-## Changelog
-
-Please have a look in [CHANGELOG](CHANGELOG.md)
-
-## License
-
-Licensed under the [MIT license](http://opensource.org/licenses/MIT).
